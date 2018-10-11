@@ -8,5 +8,9 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "fast-csv": "^2.4.1",
+    "unzipper": "^0.9.4"
+  }
 }
