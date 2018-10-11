@@ -1,16 +1,26 @@
 {
-  "name": "benfords_law",
-  "version": "1.0.0",
+  "name": "benfords-law-resultado-eleicoes-brasil-2018",
+  "version": "0.0.1",
   "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "main": "boletim_urna_1_turno.js",
   "dependencies": {
     "fast-csv": "^2.4.1",
     "unzipper": "^0.9.4"
-  }
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node boletim_urna_1_turno",
+    "boletim_urna": "node boletim_urna_1_turno.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielsan/benfords-law-resultado-eleicoes-brasil-2018.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/danielsan/benfords-law-resultado-eleicoes-brasil-2018/issues"
+  },
+  "homepage": "https://github.com/danielsan/benfords-law-resultado-eleicoes-brasil-2018#readme"
 }
