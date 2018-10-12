@@ -15,11 +15,13 @@ assert(shaUrl.startsWith('http://agencia.tse.jus.br/estatistica/sead/eleicoes/el
 assert(shaUrl.match(/\.zip\.sha512$/));
 
 const downloadContent = url => new Promise((resolve) => {
+  console.log(downloadContent.name, {url});
   http.get(url, (res) => {
     const chunks = [];
+    console.log(downloadContent.name, 'setting events', res.headers);
     res
       .on('data', (_) => {
-        console.log(Buffer.byteLength(_));
+        console.log(downloadContent.name, url, Buffer.byteLength(_));
         chunks.push(_);
       })
       .on('end', () => resolve(Buffer.concat(chunks)));
@@ -49,22 +51,26 @@ downloadContent(shaUrl).then((shaBuffer) => {
   const [sha512, filename] = shaBuffer.toString().split(/\s+/);
   console.log({sha512, filename});
 
-  const localFilename = `./resources/${filename}`;
+  const localFilename = `./resources/${filename}`.replace(/\/\//g, '/');
   fs.promises.stat(localFilename)
     .catch((err) => {
       console.error({err});
       const downloadUrl = shaUrl.replace('.sha512', '');
       console.log(`downloading ${downloadUrl}...`);
-      downloadContent(downloadUrl).then((zipBuffer) => {
-        console.log(`download completed ${downloadUrl}!`);
-        fs.promises.writeFile(localFilename, zipBuffer)
-          .then((writeFileRes) => {
-            console.log({writeFileRes});
-          })
-          .catch((writeFileErr) => {
-            console.error({writeFileErr});
-          });
-      });
+      return downloadContent(downloadUrl)
+        .then((zipBuffer) => {
+          console.log(`download completed ${downloadUrl}!`);
+          fs.promises.writeFile(localFilename, zipBuffer)
+            .then((writeFileRes) => {
+              console.log({writeFileRes});
+            })
+            .catch((writeFileErr) => {
+              console.error({writeFileErr});
+            });
+        })
+        .catch((zipDownloadError) => {
+          console.log({zipDownloadError});
+        });
     })
     .then(() => unzipFile(localFilename).then((csvBuffer) => {
       console.log('unzipping worked', csvBuffer);
