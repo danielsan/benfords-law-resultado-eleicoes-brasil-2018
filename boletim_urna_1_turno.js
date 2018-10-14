@@ -1,111 +1,120 @@
-const http = require('http');
 const fs   = require('fs');
-const unzipper = require('unzipper');
-const fastCsv  = require('fast-csv');
 const assert   = require('assert');
+const crypto   = require('crypto');
+const babar    = require('babar');
+const { run }  = require('@everymundo/runner');
 
-const headersWhiteList = 'CD_CARGO_PERGUNTA,NM_VOTAVEL,QT_VOTOS'.split(',');
+const { spinner } = require('./lib/spinner');
+const { unzipFile } = require('./lib/unzip-file');
+const { processCsvBuffer } = require('./lib/process-csv-buffer');
+const {
+  downloadToFile,
+  downloadContent, 
+} = require('./lib/downloaders');
 
+const headersWhiteList = 'CD_CARGO_PERGUNTA,NR_VOTAVEL,QT_VOTOS'.split(',');
+const headersFromFile  = require('./boletim_urna_1_turno.headers.json');
 // eslint-disable-next-line no-confusing-arrow
-const headersList = require('./boletim_urna_1_turno.headers.json').map(_ => headersWhiteList.includes(_) ? _ : undefined);
+const headersList = headersFromFile.map(_ => headersWhiteList.includes(_) ? _ : undefined);
+// eslint-disable-next-line no-confusing-arrow
+const indexes = headersFromFile.map((_, i) => headersWhiteList.includes(_) ? i : null).filter(_ => _ != null);
 
 const shaUrl = process.argv[2] || '';
+const candidateType = process.argv[3] || '1';
 
-assert(shaUrl.startsWith('http://agencia.tse.jus.br/estatistica/sead/eleicoes/eleicoes2018/'));
-assert(shaUrl.match(/\.zip\.sha512$/));
-
-const downloadContent = url => new Promise((resolve) => {
-  console.log(downloadContent.name, {url});
-  http.get(url, (res) => {
-    const chunks = [];
-    console.log(downloadContent.name, 'setting events', res.headers);
-    res
-      .on('data', (_) => {
-        console.log(downloadContent.name, url, Buffer.byteLength(_));
-        chunks.push(_);
-      })
-      .on('end', () => resolve(Buffer.concat(chunks)));
-  });
-});
-
-
-const unzipFile = zipFile => new Promise(resolve => fs.createReadStream(zipFile)
-  .pipe(unzipper.Parse())
-  .on('entry', (entry) => {
-    const fileName = entry.path;
-    // const {type, size} = entry; // 'Directory' or 'File'
-
-    if (fileName.match(/\.csv$/)) {
-      console.log({fileName}, 'FOUND!');
-      // entry.pipe(fs.createWriteStream('output/path'));
-      const bufferz = [];
-      entry
-        .on('data', _ => bufferz.push(_))
-        .on('end',  () => resolve(Buffer.concat(bufferz)));
-    } else {
-      entry.autodrain();
-    }
-  }));
-
-downloadContent(shaUrl).then((shaBuffer) => {
+const getZipFile = (shaBuffer) => {
   const [sha512, filename] = shaBuffer.toString().split(/\s+/);
   console.log({sha512, filename});
 
-  const localFilename = `./resources/${filename}`.replace(/\/\//g, '/');
-  fs.promises.stat(localFilename)
-    .catch((err) => {
-      console.error({err});
-      const downloadUrl = shaUrl.replace('.sha512', '');
-      console.log(`downloading ${downloadUrl}...`);
-      return downloadContent(downloadUrl)
-        .then((zipBuffer) => {
-          console.log(`download completed ${downloadUrl}!`);
-          fs.promises.writeFile(localFilename, zipBuffer)
-            .then((writeFileRes) => {
-              console.log({writeFileRes});
-            })
-            .catch((writeFileErr) => {
-              console.error({writeFileErr});
-            });
-        })
-        .catch((zipDownloadError) => {
-          console.log({zipDownloadError});
-        });
-    })
-    .then(() => unzipFile(localFilename).then((csvBuffer) => {
-      console.log('unzipping worked', csvBuffer);
-      const rows = [];
-      const initials = {
-        1: {times: 0, percentage: 0},
-        2: {times: 0, percentage: 0},
-        3: {times: 0, percentage: 0},
-        4: {times: 0, percentage: 0},
-        5: {times: 0, percentage: 0},
-        6: {times: 0, percentage: 0},
-        7: {times: 0, percentage: 0},
-        8: {times: 0, percentage: 0},
-        9: {times: 0, percentage: 0},
-        total: 0,
-      };
+  const localZipFilename = `./resources/${filename}`.replace(/\/\//g, '/');
+  return fs.promises.stat(localZipFilename).then(() => {
+    console.log('file already exists, let\'s process it');
+    return {localZipFilename, sha512};
+  }).catch((err) => {
+    console.error('ZIP File does not exist, let\'s download it', err.message);
+    const downloadUrl = shaUrl.replace('.sha512', '');
+    return downloadToFile(downloadUrl, localZipFilename).then(() => ({localZipFilename, sha512}));
+  });
+};
 
-      fastCsv
-        .fromString(csvBuffer.toString(), {headers: headersList, objectMode: true, strictColumnHandling: true, delimiter: ';', discardUnmappedColumns: true})
-        .on('data', (row) => {
-          if (!row.CD_CARGO_PERGUNTA === '1') return;
+const validateFileHash = ({localZipFilename, sha512}) => {
+  const ceBuffer = fs.readFileSync(localZipFilename);
+  const fileHash = crypto.createHash('sha512').update(ceBuffer).digest('hex');
+  // console.log('file downloaded', downloadToFile.name);
+  assert(sha512 === fileHash, `remote hash does not match localFile hash remote[${sha512}] === local[${fileHash}]`);
+  console.log('hashes match');
+  return localZipFilename;
+};
 
-          row.initial = row.QT_VOTOS.substr(0, 1);
-          if (!initials[row.initial]) return;
+const formatVotes = votes => votes.toString().split('').reverse().map((l, i) => (i) % 3 === 0 ? `${l},` : l).reverse().join('').replace(/^,|,$/g, '');
 
-          process.stdout.write('.');
-          initials[row.initial].times++;
-          initials.total++;
+const buildAndDisplayReport = (reportingStructure) => {
+  const benfordReport = [];
+  const candidatesReport = [];
 
-          rows.push(row);
-        })
-        .on('end', () => {
-          console.log('\n');
-          Object.keys(initials).forEach(number => initials[number].percentage = ((initials[number].times / initials.total) * 100).toFixed(2) + '%');
-          console.log('done', initials);
-        });
-    }));
-});
+  const {benford, benfordsTotal, candidates, candidatesTotal} = reportingStructure;
+
+  Object.keys(benford).forEach((number) => {
+    const item = benford[number];
+
+    const percent = (item.times / benfordsTotal) * 100;
+
+    item.percentage = `0${percent.toFixed(2)}%`.substr(-6);
+
+    benfordReport.push([number, percent]);
+  });
+
+  Object.keys(candidates)
+    .filter(_ => +_)
+    .sort()
+    .forEach((number) => {
+      const item = candidates[number];
+
+      const percent = (item.votes / candidatesTotal) * 100;
+
+      item.percentage = `0${percent.toFixed(2)}%`.substr(-6);
+
+      item.formattedVotes = formatVotes(item.votes);
+
+      // candidatesReport.push([number, percent]);
+      candidatesReport.push([number, item.votes]);
+    });
+
+  console.log(babar(benfordReport, {caption: 'Benfords Curve'}));
+  console.log(babar(candidatesReport, {caption: 'Benfords Curve', color: 'yellow', width: 160}));
+  console.log({benford, candidates});
+  // console.log({benfordReport, candidatesReport, candidatesReportLen:candidatesReport.length});
+};
+
+const dealWithError = (chainError) => {
+  spinner.stopAndPersist();
+  console.error('chainError');
+  console.error(chainError);
+  process.exit(1);
+};
+
+const validateHashUrl = async(hashUrl) => {
+  assert(hashUrl.startsWith('http://agencia.tse.jus.br/estatistica/sead/eleicoes/eleicoes2018/'));
+  assert(hashUrl.match(/\.zip\.sha512$/));
+
+  return hashUrl;
+};
+
+const unzipLocalFile = localZipFilename => unzipFile(localZipFilename);
+
+const init = async () => validateHashUrl(shaUrl)
+    .then(downloadContent)
+    .then(getZipFile)
+    .then(validateFileHash)
+    .then(unzipLocalFile)
+    .then(processCsvBuffer(candidateType, indexes))
+    .then(buildAndDisplayReport)
+    .catch(dealWithError);
+
+run(__filename, init);
+
+module.exports = {
+  unzipFile,
+  init,
+  headersList,
+};
