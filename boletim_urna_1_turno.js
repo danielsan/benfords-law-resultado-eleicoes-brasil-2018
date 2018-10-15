@@ -4,7 +4,9 @@ const crypto   = require('crypto');
 const babar    = require('babar');
 const { run }  = require('@everymundo/runner');
 
-const { spinner } = require('./lib/spinner');
+const { turnos }    = require('./config');
+const { spinner }   = require('./lib/spinner');
+const { lpad }      = require('./lib/spinner');
 const { unzipFile } = require('./lib/unzip-file');
 const { processCsvBuffer } = require('./lib/process-csv-buffer');
 const {
@@ -19,10 +21,7 @@ const headersList = headersFromFile.map(_ => headersWhiteList.includes(_) ? _ : 
 // eslint-disable-next-line no-confusing-arrow
 const indexes = headersFromFile.map((_, i) => headersWhiteList.includes(_) ? i : null).filter(_ => _ != null);
 
-const shaUrl = process.argv[2] || '';
-const candidateType = process.argv[3] || '1';
-
-const getZipFile = (shaBuffer) => {
+const getZipFile = downloadUrl => (shaBuffer) => {
   const [sha512, filename] = shaBuffer.toString().split(/\s+/);
   console.log({sha512, filename});
 
@@ -32,7 +31,6 @@ const getZipFile = (shaBuffer) => {
     return {localZipFilename, sha512};
   }).catch((err) => {
     console.error('ZIP File does not exist, let\'s download it', err.message);
-    const downloadUrl = shaUrl.replace('.sha512', '');
     return downloadToFile(downloadUrl, localZipFilename).then(() => ({localZipFilename, sha512}));
   });
 };
@@ -64,6 +62,7 @@ const buildAndDisplayReport = (reportingStructure) => {
     benfordReport.push([number, percent]);
   });
 
+  let candidatesText = '';
   Object.keys(candidates)
     .filter(_ => +_)
     .sort()
@@ -74,15 +73,19 @@ const buildAndDisplayReport = (reportingStructure) => {
 
       item.percentage = `0${percent.toFixed(2)}%`.substr(-6);
 
-      item.formattedVotes = formatVotes(item.votes);
+      item.formatted = formatVotes(item.votes);
 
       // candidatesReport.push([number, percent]);
       candidatesReport.push([number, item.votes]);
+      candidatesText += `${number} has ${item.percentage} of votes with ${item.formatted.padStart(10, ' ')} total votes\n`;
     });
 
   console.log(babar(benfordReport, {caption: 'Benfords Curve'}));
-  console.log(babar(candidatesReport, {caption: 'Benfords Curve', color: 'yellow', width: 160}));
-  console.log({benford, candidates});
+  // console.log(babar(candidatesReport, {caption: 'Benfords Curve', color: 'yellow', width: 160}));
+  console.log({benford});
+  console.log('\nCandidates\n', candidatesText);
+  console.log('Total votes', formatVotes(candidatesTotal));
+  
   // console.log({benfordReport, candidatesReport, candidatesReportLen:candidatesReport.length});
 };
 
@@ -102,14 +105,25 @@ const validateHashUrl = async(hashUrl) => {
 
 const unzipLocalFile = localZipFilename => unzipFile(localZipFilename);
 
-const init = async () => validateHashUrl(shaUrl)
+const init = async () => {
+  const UF            = (process.argv[2] || '').substr(0, 2).toUpperCase();
+  const turno         = process.argv[4] || '1';
+  const candidateType = process.argv[3] || '1';
+
+  const shaUrl = turnos[turno][UF];
+  assert(shaUrl, `Não foi possível encontrar url para turno:${turno} UF:${UF}`);
+
+  const downloadUrl = shaUrl.replace('.sha512', '');
+
+  validateHashUrl(shaUrl)
     .then(downloadContent)
-    .then(getZipFile)
+    .then(getZipFile(downloadUrl))
     .then(validateFileHash)
     .then(unzipLocalFile)
     .then(processCsvBuffer(candidateType, indexes))
     .then(buildAndDisplayReport)
     .catch(dealWithError);
+};
 
 run(__filename, init);
 
