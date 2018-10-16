@@ -13,6 +13,7 @@ const {
   downloadToFile,
   downloadContent, 
 } = require('./lib/downloaders');
+const {blue, yellow, green} = require('chalk');
 
 const headersWhiteList = 'CD_CARGO_PERGUNTA,NR_VOTAVEL,QT_VOTOS'.split(',');
 const headersFromFile  = require('./boletim_urna_1_turno.headers.json');
@@ -52,6 +53,7 @@ const buildAndDisplayReport = (reportingStructure) => {
 
   const {benford, benfordsTotal, candidates, candidatesTotal} = reportingStructure;
 
+  let benfordText = '';
   Object.keys(benford).forEach((number) => {
     const item = benford[number];
 
@@ -60,6 +62,7 @@ const buildAndDisplayReport = (reportingStructure) => {
     item.percentage = `0${percent.toFixed(2)}%`.substr(-6);
 
     benfordReport.push([number, percent]);
+    benfordText += `inital number ${yellow(number)} appears ${green(item.percentage)} of the time | ${yellow(item.times.toString().padStart(7, ' '))} / ${benfordsTotal}\n`;
   });
 
   let candidatesText = '';
@@ -77,16 +80,16 @@ const buildAndDisplayReport = (reportingStructure) => {
 
       // candidatesReport.push([number, percent]);
       candidatesReport.push([number, item.votes]);
-      candidatesText += `${number} has ${item.percentage} of votes with ${item.formatted.padStart(10, ' ')} total votes\n`;
+      candidatesText += `${yellow(number)} has ${green(item.percentage)} of votes with ${yellow(item.formatted.padStart(10, ' '))} total votes\n`;
     });
 
   console.log(babar(benfordReport, {caption: 'Benfords Curve'}));
   // console.log(babar(candidatesReport, {caption: 'Benfords Curve', color: 'yellow', width: 160}));
-  console.log({benford});
-  console.log('\nCandidates\n', candidatesText);
+  // console.log({benford});
+  console.log(`\nBenfords Curve Report\n${benfordText}`);
+  console.log(`\nCandidates\n${candidatesText}`);
   console.log('Total votes', formatVotes(candidatesTotal));
-  
-  // console.log({benfordReport, candidatesReport, candidatesReportLen:candidatesReport.length});
+  process.exit(0);
 };
 
 const dealWithError = (chainError) => {
