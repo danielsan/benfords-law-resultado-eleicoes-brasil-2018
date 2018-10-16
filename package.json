@@ -13,7 +13,7 @@
   },
   "devDependencies": {},
   "scripts": {
-    "start": "node boletim_urna_1_turno",
+    "start": "node boletim_urna_1_turno.js",
     "boletim_urna": "node boletim_urna_1_turno.js"
   },
   "repository": {
